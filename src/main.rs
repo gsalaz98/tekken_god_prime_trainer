@@ -10,6 +10,8 @@ use sysinfo::{ProcessExt, SystemExt};
 
 pub mod game_state;
 pub mod globals;
+pub mod input;
+pub mod player;
 pub mod position;
 pub mod round;
 
@@ -33,10 +35,8 @@ fn main() {
     let mut previous_frame_round = 1;
 
     loop {
-        thread::sleep(std::time::Duration::from_secs_f64(1.0 / 60.0));
+        thread::sleep(std::time::Duration::from_secs_f64(1.0 / 120.0));
         state.update();
-
-        round_batch.push(state.clone());
 
         let current_round = state.round();
         let round_frame_count = state.round_frame_count();
@@ -47,6 +47,14 @@ fn main() {
             continue;
         }
 
+        if round_frame_count == round_frame_count_previous {
+            continue;
+        }
+
+        // Only update the batch once we have a new frame to advance
+        round_batch.push(state.clone());
+
+        // Save match data when the round changes count
         if previous_frame_round != current_round.unwrap() {
             let round_result = serde_json::to_string(&round_batch).unwrap();
             let file_name = format!("C:/Users/gsala/Documents/Tekken7Replays/{}.json", uuid::Uuid::new_v4());
@@ -58,6 +66,8 @@ fn main() {
 
             file.write(&round_result.as_bytes()).expect("Failed to write buffer to file");
             file.flush().expect("Failed to flush file");
+
+            round_batch.clear();
         }
 
         previous_frame_round = current_round.unwrap();

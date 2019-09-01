@@ -1,6 +1,9 @@
 use read_process_memory::*;
 use serde::Serialize;
 
+use crate::globals;
+use crate::input;
+use crate::player;
 use crate::position;
 use crate::round;
 
@@ -17,10 +20,16 @@ pub struct GameState {
     p1_x: Option<f32>,
     p1_y: Option<f32>,
     p1_z: Option<f32>,
+    p1_input_attack: Option<u16>,
+    p1_input_direction: Option<u16>,
+    p1_damage_received: Option<u32>,
 
     p2_x: Option<f32>,
     p2_y: Option<f32>,
     p2_z: Option<f32>,
+    p2_input_attack: Option<u16>,
+    p2_input_direction: Option<u16>,
+    p2_damage_received: Option<u32>,
 
     last_update: Option<f64>,
 }
@@ -38,10 +47,16 @@ impl GameState {
             p1_x: None,
             p1_y: None,
             p1_z: None,
+            p1_input_attack: None,
+            p1_input_direction: None,
+            p1_damage_received: None,
 
             p2_x: None,
             p2_y: None,
             p2_z: None,
+            p2_input_attack: None,
+            p2_input_direction: None,
+            p2_damage_received: None,
 
             last_update: None
         }
@@ -81,8 +96,7 @@ impl GameState {
     }
 
     pub fn update(&mut self) {
-        // Store the previous last update time just in case
-        let _prev_last_update = self.last_update;
+        self.round_frame_count_previous = self.round_frame_count;
 
         // Make sure we update the last update field as the first thing we do
         // since `update` will ALWAYS result in a mutation
@@ -92,7 +106,7 @@ impl GameState {
         };
 
         // Update the previous frame count here so that we don't
-        // screw up ourselves somehow
+        // screw up ourselves somehow. Will always be None at initialization time
         if self.round_frame_count_previous.is_none() {
             self.round_frame_count_previous = self.round_frame_count;
         }
@@ -102,7 +116,6 @@ impl GameState {
         self.set_round();
 
         if self.round_frame_count == self.round_frame_count_previous {
-            println!("You are not in a match currently or are in between rounds.");
             return;
         }
 
@@ -110,10 +123,10 @@ impl GameState {
         let p2_coords = position::p2_xyz(&self.pid);
 
         match p1_coords {
-            Ok(coordinates) => {
-                self.p1_x = Some(coordinates.0);
-                self.p1_y = Some(coordinates.1);
-                self.p1_z = Some(coordinates.2);
+            Ok((x, y, z)) => {
+                self.p1_x = Some(x);
+                self.p1_y = Some(y);
+                self.p1_z = Some(z);
             },
             Err(_) => {
                 self.p1_x = None;
@@ -123,10 +136,10 @@ impl GameState {
         };
 
         match p2_coords {
-            Ok(coordinates) => {
-                self.p2_x = Some(coordinates.0);
-                self.p2_y = Some(coordinates.1);
-                self.p2_z = Some(coordinates.2);
+            Ok((x, y, z)) => {
+                self.p2_x = Some(x);
+                self.p2_y = Some(y);
+                self.p2_z = Some(z);
             },
             Err(_) => {
                 self.p2_x = None;
@@ -134,5 +147,13 @@ impl GameState {
                 self.p2_z = None;
             }
         };
+
+        self.p1_input_attack = input::get_inputted_attack(&self.pid, globals::MemoryAddresses::PlayerOneBaseAddress).ok();
+        self.p1_input_direction = input::get_inputted_direction(&self.pid, globals::MemoryAddresses::PlayerOneBaseAddress).ok();
+        self.p1_damage_received = player::get_damage_received(&self.pid, globals::MemoryAddresses::PlayerOneBaseAddress).ok();
+
+        self.p2_input_attack = input::get_inputted_attack(&self.pid, globals::MemoryAddresses::PlayerTwoBaseAddress).ok();
+        self.p2_input_direction = input::get_inputted_direction(&self.pid, globals::MemoryAddresses::PlayerTwoBaseAddress).ok();
+        self.p2_damage_received = player::get_damage_received(&self.pid, globals::MemoryAddresses::PlayerTwoBaseAddress).ok();
     }
 }
