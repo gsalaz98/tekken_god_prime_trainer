@@ -7,11 +7,8 @@ use crate::player;
 use crate::position;
 use crate::round;
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct GameState {
-    #[serde(skip)]
-    pid: *mut std::ffi::c_void,
-
     round_frame_count: Option<u32>,
     round_frame_count_previous: Option<u32>,
 
@@ -55,37 +52,9 @@ pub struct GameState {
     p2_previous_facing: Option<globals::Player>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct ReplayFile {
-    round_frame_count: u32,
-    round_frame_count_previous: u32,
-
-    round: u8,
-    
-    p1_x: f32,
-    p1_y: f32,
-    p1_z: f32,
-    p1_input_attack: u16,
-    p1_input_direction: u16,
-    p1_damage_received: u32,
-    p1_facing: u8,
-
-    p2_x: f32,
-    p2_y: f32,
-    p2_z: f32,
-    p2_input_attack: u16,
-    p2_input_direction: u16,
-    p2_damage_received: u32,
-    p2_facing: u8,
-
-    last_update: f64,
-}
-
 impl GameState {
-    pub fn new(pid: Pid) -> Self {
+    pub fn new() -> Self {
         Self {
-            pid: pid.try_into_process_handle().expect("Failed to get process handle"),
-
             round_frame_count: None,
             round_frame_count_previous: None,
 
@@ -141,8 +110,8 @@ impl GameState {
     }
 
     /// Sets the frame count for the current frame
-    fn set_round_frame_count(&mut self) {
-        match round::get_round_frame_count(&self.pid) {
+    fn set_round_frame_count(&mut self, pid: &ProcessHandle) {
+        match round::get_round_frame_count(pid) {
             Ok(frames) => self.round_frame_count = Some(frames),
             Err(e) => {
                 self.round_frame_count = None;
@@ -151,8 +120,8 @@ impl GameState {
         };
     }
 
-    fn set_round(&mut self) {
-        match round::get_round(&self.pid) {
+    fn set_round(&mut self, pid: &ProcessHandle) {
+        match round::get_round(pid) {
             Ok(round) => self.round = Some(round),
             Err(e) => {
                 self.round = None;
@@ -161,7 +130,7 @@ impl GameState {
         };
     }
 
-    pub fn update(&mut self, replay_file_frame: Option<&ReplayFile>, reverse_sides: bool) {
+    pub fn update(&mut self, pid: &ProcessHandle) {//replay_file_frame: Option<&ReplayState>, reverse_sides: bool) {
         self.round_frame_count_previous = self.round_frame_count;
 
         // Make sure we update the last update field as the first thing we do
@@ -178,15 +147,15 @@ impl GameState {
         }
 
         // Set the timer to None if we encounter an error setting the frame count
-        self.set_round_frame_count();
-        self.set_round();
+        self.set_round_frame_count(&pid);
+        self.set_round(&pid);
 
         if self.round_frame_count == self.round_frame_count_previous {
             return;
         }
 
-        let p1_coords = position::p1_xyz(&self.pid);
-        let p2_coords = position::p2_xyz(&self.pid);
+        let p1_coords = position::p1_xyz(pid);
+        let p2_coords = position::p2_xyz(pid);
 
         match p1_coords {
             Ok((x, y, z)) => {
@@ -214,53 +183,88 @@ impl GameState {
             }
         };
 
-        self.p1_input_attack = input::get_inputted_attack(&self.pid, globals::MemoryAddresses::PlayerOneBaseAddress).ok();
-        self.p1_input_direction = input::get_inputted_direction(&self.pid, globals::MemoryAddresses::PlayerOneBaseAddress).ok();
-        self.p1_damage_received = player::get_damage_received(&self.pid, globals::MemoryAddresses::PlayerOneBaseAddress).ok();
-        self.p1_facing = position::facing(&self.pid, globals::Player::One).ok();
-        self.p1_char_id = player::get_player_char_id(&self.pid, globals::MemoryAddresses::PlayerOneBaseAddress).ok();
+        self.p1_input_attack = input::get_inputted_attack(pid, globals::MemoryAddresses::PlayerOneBaseAddress).ok();
+        self.p1_input_direction = input::get_inputted_direction(pid, globals::MemoryAddresses::PlayerOneBaseAddress).ok();
+        self.p1_damage_received = player::get_damage_received(pid, globals::MemoryAddresses::PlayerOneBaseAddress).ok();
+        self.p1_facing = position::facing(pid, globals::Player::One).ok();
+        self.p1_char_id = player::get_player_char_id(pid, globals::MemoryAddresses::PlayerOneBaseAddress).ok();
         
-        self.p2_input_attack = input::get_inputted_attack(&self.pid, globals::MemoryAddresses::PlayerTwoBaseAddress).ok();
-        self.p2_input_direction = input::get_inputted_direction(&self.pid, globals::MemoryAddresses::PlayerTwoBaseAddress).ok();
-        self.p2_damage_received = player::get_damage_received(&self.pid, globals::MemoryAddresses::PlayerTwoBaseAddress).ok();
-        self.p2_facing = position::facing(&self.pid, globals::Player::Two).ok();
-        self.p2_char_id = player::get_player_char_id(&self.pid, globals::MemoryAddresses::PlayerTwoBaseAddress).ok();
+        self.p2_input_attack = input::get_inputted_attack(pid, globals::MemoryAddresses::PlayerTwoBaseAddress).ok();
+        self.p2_input_direction = input::get_inputted_direction(pid, globals::MemoryAddresses::PlayerTwoBaseAddress).ok();
+        self.p2_damage_received = player::get_damage_received(pid, globals::MemoryAddresses::PlayerTwoBaseAddress).ok();
+        self.p2_facing = position::facing(pid, globals::Player::Two).ok();
+        self.p2_char_id = player::get_player_char_id(pid, globals::MemoryAddresses::PlayerTwoBaseAddress).ok();
         
+        println!("Frame: {}\tP1: {}, {} \t P2: {}, {}", self.round_frame_count.unwrap(), globals::InputButton::from(self.p1_input_attack.unwrap() as usize).to_str(), globals::InputDirection::from(self.p1_input_direction.unwrap() as usize).to_str(), globals::InputButton::from(self.p2_input_attack.unwrap() as usize).to_str(), globals::InputDirection::from(self.p2_input_direction.unwrap() as usize).to_str());
+    }
 
-        if replay_file_frame.is_some() {
-            let replay = replay_file_frame.unwrap();
-
-            let mut p1_button = globals::InputButton::from(replay.p1_input_attack as usize);
-            let mut p1_direction = globals::InputDirection::from(replay.p1_input_direction as usize);
-            let p1_facing = if replay.p1_facing == 0 { globals::Player::One } else { globals::Player::Two };
-
-            let mut p2_button = globals::InputButton::from(replay.p2_input_attack as usize);
-            let mut p2_direction = globals::InputDirection::from(replay.p2_input_direction as usize);
-            let p2_facing = if replay.p2_facing == 0 { globals::Player::One } else { globals::Player::Two };
-
-            if reverse_sides {
-                std::mem::swap(&mut p1_button, &mut p2_button);
-                std::mem::swap(&mut p1_direction, &mut p2_direction);
-            }
-
-            println!("Frame: {}\tP1: {}, {}, {}, {}", self.round_frame_count.unwrap(), p1_button.to_str(), p1_direction.to_str(), replay.p1_facing, p1_direction.to_input_key(&globals::Player::One, p1_facing.clone()));
-
-            p1_button.input_attack(globals::Player::One, self.p1_previous_button.clone());
-            p1_direction.input_direction(globals::Player::One, p1_facing.clone(), self.p1_previous_facing.clone(), self.p1_previous_direction.clone());
-            p2_button.input_attack(globals::Player::Two, self.p2_previous_button.clone());
-            p2_direction.input_direction(globals::Player::Two, p2_facing.clone(), self.p2_previous_facing.clone(), self.p2_previous_direction.clone());
-
-            self.p1_previous_button = Some(p1_button);
-            self.p1_previous_direction = Some(p1_direction);
-            self.p1_previous_facing = Some(p1_facing);
-
-            self.p2_previous_button = Some(p2_button);
-            self.p2_previous_direction = Some(p2_direction);
-            self.p2_previous_facing = Some(p2_facing);
+    pub fn replay(&self, previous_frame_state: Option<&GameState>, frame_state: &GameState) {
+        if self.round_frame_count == self.round_frame_count_previous {
+            return;
         }
-        else {
-            println!("Frame: {}\tP1: {}, {} \t P2: {}, {}", self.round_frame_count.unwrap(), globals::InputButton::from(self.p1_input_attack.unwrap() as usize).to_str(), globals::InputDirection::from(self.p1_input_direction.unwrap() as usize).to_str(), globals::InputButton::from(self.p2_input_attack.unwrap() as usize).to_str(), globals::InputDirection::from(self.p2_input_direction.unwrap() as usize).to_str());
-        }
+
+        let p1_input_attack = frame_state.p1_input_attack.expect("p1 input attack");
+        let p1_input_direction = frame_state.p1_input_direction.expect("p1 input direction");
+        let p1_button = globals::InputButton::from(p1_input_attack as usize);
+        let p1_direction = globals::InputDirection::from(p1_input_direction as usize);
+        let p1_facing = match frame_state.p1_facing {
+            Some(0) => globals::Player::One,
+            Some(1) => globals::Player::Two,
+            _ => panic!("Player one is facing the void")
+        };
+
+        let p2_input_attack = frame_state.p2_input_attack.expect("p2 input attack");
+        let p2_input_direction = frame_state.p2_input_direction.expect("p2 input direction");
+        let p2_button = globals::InputButton::from(p2_input_attack as usize);
+        let p2_direction = globals::InputDirection::from(p2_input_direction as usize);
+        let p2_facing = match frame_state.p1_facing {
+            Some(0) => globals::Player::One,
+            Some(1) => globals::Player::Two,
+            _ => panic!("Player two is facing the void")
+        };
+
+        // TODO: Figure out how to determine what side the player spawns on in online matches
+        p1_button.input_attack(
+            globals::Player::One, 
+            previous_frame_state.map(|prev| {
+                globals::InputButton::from(prev.p1_input_attack.unwrap() as usize)
+            })
+            .clone()
+        );
+
+        p1_direction.input_direction(
+            globals::Player::One, 
+            p1_facing.clone(), 
+            previous_frame_state.map(|prev| match prev.p1_facing {
+                Some(0) => globals::Player::One,
+                Some(1) => globals::Player::Two,
+                _ => panic!("Player one is facing the void")
+            }), 
+            previous_frame_state.map(|prev| {
+                globals::InputDirection::from(prev.p1_input_direction.unwrap() as usize)
+            })
+        );
+
+        // TODO: Figure out how to determine what side the player spawns on in online matches
+        p2_button.input_attack(
+            globals::Player::Two, 
+            previous_frame_state.map(|prev| {
+                globals::InputButton::from(prev.p2_input_attack.unwrap() as usize)
+            })
+        );
+
+        p2_direction.input_direction(
+            globals::Player::Two, 
+            p2_facing.clone(), 
+            previous_frame_state.map(|prev| match prev.p2_facing {
+                Some(0) => globals::Player::One,
+                Some(1) => globals::Player::Two,
+                _ => panic!("Player two is facing the void")
+            }), 
+            previous_frame_state.map(|prev| {
+                globals::InputDirection::from(prev.p2_input_direction.unwrap() as usize)
+            })
+        );
     }
 }
 
