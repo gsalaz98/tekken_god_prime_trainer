@@ -130,7 +130,7 @@ impl GameState {
         };
     }
 
-    pub fn update(&mut self, pid: &ProcessHandle) {//replay_file_frame: Option<&ReplayState>, reverse_sides: bool) {
+    pub fn update(&mut self, pid: &ProcessHandle) {
         self.round_frame_count_previous = self.round_frame_count;
 
         // Make sure we update the last update field as the first thing we do
