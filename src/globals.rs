@@ -1,7 +1,7 @@
 use enigo::{Enigo, KeyboardControllable};
 use serde::{Serialize, Deserialize};
 
-pub enum MemoryAddresses {
+pub enum MemoryAddress {
     GameAddress = 0x140000000,
 
     PlayerOneBaseAddress = 0x00342B780,
@@ -31,6 +31,49 @@ pub enum MemoryAddresses {
 pub enum Player {
     One,
     Two,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub enum Facing {
+    Left,
+    Right
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub enum Face {
+    Down,
+    Up,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub enum Feet {
+    Away,
+    Towards,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub enum Stand {
+    Up,
+    Crouching,
+
+    BackRoll,
+
+    ForwardRoll,
+    ForwardRollStand,
+    ForwardRollCrouch,
+    ForwardRollLungeAttack,
+    ForwardRollLowAttack,
+    ForwardRollMidAttack,
+
+    RollLeft,
+    RollRight,
+
+    LowAttack,
+    MidAttack,
+
+    Special,
+
+    Ukemi,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -86,11 +129,131 @@ pub enum InputButton {
     RagePlusOnePlusTwoPlusThreePlusFour = 15872,
 }
 
-//Creating file: C:/Users/gsala/Documents/Tekken7Replays/40bc538e-7729-41c6-bd70-cd81dae5142a.json
-
 #[derive(Clone, Serialize, Deserialize)]
 pub enum Character {
+    Paul = 0,
+    Law,
+    King,
+    Yoshimitsu,
+    Hwoarang,
+    Xiaoyu,
+    Jin,
+    Bryan,
+    Heihachi,
+    Kazuya,
+    Steve,
+    Jack7,
+    Asuka,
+    DevilJin,
+    Feng,
+    Lili,
+    Dragunov,
+    Leo,
+    Lars,
+    Alisa,
+    Claudio,
+    Katarina,
+    LuckyChloe,
+    Shaheen,
+    Josie,
+    Gigas,
+    Kazumi,
+    DevilKazumi,
+    Nina,
+    MasterRaven,
+    Lee,
+    Bob,
+    Akuma,
+    Kuma,
+    Panda,
+    Eddy,
+    Eliza,
+    Miguel,
+    TekkenForce,
+    KidKazuya,
+    Jack4,
+    YoungHeihachi,
+    Dummy,
+    Geese,
+    Noctis,
+    Anna,
+    Lei,
+    Marduk,
+    ArmorKing,
+    Julia,
+    Negan,
+    Zafina,
+    Ganryu,
+    Leroy,
+    Fahkumram,
 
+    Unloaded = 71,
+    NotSelected = 255
+}
+
+impl std::fmt::Display for Character {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Character::Paul => write!(f, "Paul"),
+            Character::Law => write!(f, "Law"),
+            Character::King => write!(f, "King"),
+            Character::Yoshimitsu => write!(f, "Yoshimitsu"),
+            Character::Hwoarang => write!(f, "Hwoarang"),
+            Character::Xiaoyu => write!(f, "Xiaoyu"),
+            Character::Jin => write!(f, "Jin"),
+            Character::Bryan => write!(f, "Bryan"),
+            Character::Heihachi => write!(f, "Heihachi"),
+            Character::Kazuya => write!(f, "Kazuya"),
+            Character::Steve => write!(f, "Steve"),
+            Character::Jack7 => write!(f, "Jack-7"),
+            Character::Asuka => write!(f, "Asuka"),
+            Character::DevilJin => write!(f, "Devil Jin"),
+            Character::Feng => write!(f, "Feng"),
+            Character::Lili => write!(f, "Lili"),
+            Character::Dragunov => write!(f, "Dragunov"),
+            Character::Leo => write!(f, "Leo"),
+            Character::Lars => write!(f, "Lars"),
+            Character::Alisa => write!(f, "Alisa"),
+            Character::Claudio => write!(f, "Claudio"),
+            Character::Katarina => write!(f, "Katarina"),
+            Character::LuckyChloe => write!(f, "Lucky Chloe"),
+            Character::Shaheen => write!(f, "Shaheen"),
+            Character::Josie => write!(f, "Josie"),
+            Character::Gigas => write!(f, "Gigas"),
+            Character::Kazumi => write!(f, "Kazumi"),
+            Character::DevilKazumi => write!(f, "Devil Kazumi"),
+            Character::Nina => write!(f, "Nina"),
+            Character::MasterRaven => write!(f, "Master Raven"),
+            Character::Lee => write!(f, "Lee"),
+            Character::Bob => write!(f, "Bob"),
+            Character::Akuma => write!(f, "Akuma"),
+            Character::Kuma => write!(f, "Kuma"),
+            Character::Panda => write!(f, "Panda"),
+            Character::Eddy => write!(f, "Eddy"),
+            Character::Eliza => write!(f, "Eliza"),
+            Character::Miguel => write!(f, "Miguel"),
+            Character::TekkenForce => write!(f, "Tekken Force"),
+            Character::KidKazuya => write!(f, "Kid Kazuya"),
+            Character::Jack4 => write!(f, "Jack-4"),
+            Character::YoungHeihachi => write!(f, "Young Heihachi"),
+            Character::Dummy => write!(f, "Dummy"),
+            Character::Geese => write!(f, "Geese"),
+            Character::Noctis => write!(f, "Noctis"),
+            Character::Anna => write!(f, "Anna"),
+            Character::Lei => write!(f, "Lei"),
+            Character::Marduk => write!(f, "Marduk"),
+            Character::ArmorKing => write!(f, "Armor King"),
+            Character::Julia => write!(f, "Julia"),
+            Character::Negan => write!(f, "Negan"),
+            Character::Zafina => write!(f, "Zafina"),
+            Character::Ganryu => write!(f, "Ganryu"),
+            Character::Leroy => write!(f, "Leroy"),
+            Character::Fahkumram => write!(f, "Fahkumram"),
+
+            Character::Unloaded => write!(f, "Unloaded"),
+            Character::NotSelected => write!(f, "Not selected")
+        }
+    }
 }
 
 impl InputButton {
@@ -388,6 +551,15 @@ impl From<usize> for InputButton {
             15872 => InputButton::RagePlusOnePlusTwoPlusThreePlusFour,
 
             _ => panic!(format!("Unknown input button encountered: {}", value))
+        }
+    }
+}
+
+impl Player {
+    pub fn base_address(&self) -> usize {
+        match self {
+            Player::One => MemoryAddress::PlayerOneBaseAddress as usize,
+            Player::Two => MemoryAddress::PlayerTwoBaseAddress as usize
         }
     }
 }

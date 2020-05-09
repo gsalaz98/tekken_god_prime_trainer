@@ -1,108 +1,51 @@
 use read_process_memory::*;
 use serde::{Serialize, Deserialize};
 
-use crate::globals;
-use crate::input;
-use crate::player;
-use crate::position;
-use crate::round;
+use crate::globals::{self, Player};
+use crate::memory::{MemoryModel, InputMemory, RoundMemory};
+use super::PlayerState;
+
 
 #[derive(Clone, Deserialize, Serialize)]
-pub struct GameState {
-    round_frame_count: Option<u32>,
-    round_frame_count_previous: Option<u32>,
+pub struct GameState<M: MemoryModel> {
+    round_frame_count: M::FrameCount,
+    round_frame_count_previous: M::FrameCount,
 
-    round: Option<u8>,
-    
-    p1_x: Option<f32>,
-    p1_y: Option<f32>,
-    p1_z: Option<f32>,
-    p1_input_attack: Option<u16>,
-    p1_input_direction: Option<u16>,
-    p1_damage_received: Option<u32>,
-    p1_facing: Option<u8>,
+    round: M::RoundCount,
 
-    p2_x: Option<f32>,
-    p2_y: Option<f32>,
-    p2_z: Option<f32>,
-    p2_input_attack: Option<u16>,
-    p2_input_direction: Option<u16>,
-    p2_damage_received: Option<u32>,
-    p2_facing: Option<u8>,
-
-    last_update: Option<f64>,
+    player_state: (PlayerState, PlayerState),
 
     #[serde(skip)]
-    p1_char_id: Option<u16>,
-    #[serde(skip)]
-    p2_char_id: Option<u16>,
-
-    #[serde(skip)]
-    p1_previous_button: Option<globals::InputButton>,
-    #[serde(skip)]
-    p1_previous_direction: Option<globals::InputDirection>,
-    #[serde(skip)]
-    p1_previous_facing: Option<globals::Player>,
-
-    #[serde(skip)]
-    p2_previous_button: Option<globals::InputButton>,
-    #[serde(skip)]
-    p2_previous_direction: Option<globals::InputDirection>,
-    #[serde(skip)]
-    p2_previous_facing: Option<globals::Player>,
+    memory: M
 }
 
-impl GameState {
-    pub fn new() -> Self {
+impl<M: MemoryModel> GameState<M> {
+    pub fn new(memory: M) -> Self {
         Self {
             round_frame_count: None,
             round_frame_count_previous: None,
 
             round: None,
 
-            p1_x: None,
-            p1_y: None,
-            p1_z: None,
-            p1_input_attack: None,
-            p1_input_direction: None,
-            p1_damage_received: None,
-            p1_facing: None,
+            player_state: (PlayerState, PlayerState)
 
-            p2_x: None,
-            p2_y: None,
-            p2_z: None,
-            p2_input_attack: None,
-            p2_input_direction: None,
-            p2_damage_received: None,
-            p2_facing: None,
-
-            p1_char_id: None,
-            p2_char_id: None,
-
-            last_update: None,
-            p1_previous_button: None,
-            p1_previous_direction: None,
-            p1_previous_facing: None,
-
-            p2_previous_button: None,
-            p2_previous_direction: None,
-            p2_previous_facing: None,
+            memory
         }
     }
 
-    pub fn round(&self) -> Option<u8> {
+    pub fn round(&self) -> Option<M::RoundCount> {
         self.round
     }
     
-    pub fn round_frame_count(&self) -> Option<u32> {
+    pub fn round_frame_count(&self) -> Option<M::FrameCount> {
         self.round_frame_count
     }
 
-    pub fn round_frame_count_previous(&self) -> Option<u32> {
+    pub fn round_frame_count_previous(&self) -> Option<M::FrameCount> {
         self.round_frame_count_previous
     }
 
-    pub fn character_id(&self, player: globals::Player) -> Option<u16> {
+    pub fn character_id(&self, player: globals::Player) -> Option<M::Character> {
         match player {
             globals::Player::One => self.p1_char_id,
             globals::Player::Two => self.p2_char_id
@@ -110,9 +53,9 @@ impl GameState {
     }
 
     /// Sets the frame count for the current frame
-    fn set_round_frame_count(&mut self, pid: &ProcessHandle) {
-        match round::get_round_frame_count(pid) {
-            Ok(frames) => self.round_frame_count = Some(frames),
+    fn update_round_frame_count(&mut self) {
+        match self.memory.round_frame() {
+            Ok(frames) => self.round_frame_count = Some(frames.into()),
             Err(e) => {
                 self.round_frame_count = None;
                 println!("Error reading match round timer frames: {:?}", e);
@@ -120,9 +63,9 @@ impl GameState {
         };
     }
 
-    fn set_round(&mut self, pid: &ProcessHandle) {
-        match round::get_round(pid) {
-            Ok(round) => self.round = Some(round),
+    fn update_round(&mut self) {
+        match self.memory.round() {
+            Ok(round) => self.round = Some(round.into()),
             Err(e) => {
                 self.round = None;
                 println!("Error reading match round count: {:?}", e);
@@ -130,7 +73,40 @@ impl GameState {
         };
     }
 
-    pub fn update(&mut self, pid: &ProcessHandle) {
+    pub fn update_player_state(&self, player: Player) {
+        match player {
+            Player::One => {
+                let coordinates = self.memory.coordinates(Player::One);
+                
+                self.p1_x = coordinates.x().ok(); 
+                self.p1_y = coordinates.y().ok(); 
+                self.p1_z = coordinates.z().ok(); 
+
+                self.p1_input_attack = self.memory.input_attack(player).ok();
+                self.p1_input_direction = self.memory.input_direction(player).ok();
+
+                self.p1_damage_received = self.memory.player_damage_received(player).ok();
+                self.p1_facing = self.memory.player_facing(player).ok();
+                self.p1_char_id = self.memory.player_character_id(player).ok();
+            },
+            Player::Two => {
+                let (x, y, z) = self.memory.player_coordinates(player);
+
+                self.p2_x = x.ok();
+                self.p2_y = y.ok();
+                self.p2_z = z.ok();
+
+                self.p2_input_attack = self.memory.input_attack(player).ok();
+                self.p2_input_direction = self.memory.input_direction(player).ok();
+
+                self.p2_damage_received = self.memory.player_damage_received(player).ok();
+                self.p2_facing = self.memory.player_facing(player).ok();
+                self.p2_char_id = self.memory.player_character_id(player).ok();
+            }
+        };
+    }
+
+    pub fn update(&mut self) {
         self.round_frame_count_previous = self.round_frame_count;
 
         // Make sure we update the last update field as the first thing we do
@@ -147,58 +123,21 @@ impl GameState {
         }
 
         // Set the timer to None if we encounter an error setting the frame count
-        self.set_round_frame_count(&pid);
-        self.set_round(&pid);
+        self.update_round_frame_count();
+        self.update_round();
 
         if self.round_frame_count == self.round_frame_count_previous {
             return;
         }
 
-        let p1_coords = position::p1_xyz(pid);
-        let p2_coords = position::p2_xyz(pid);
+        self.update_player_state(Player::One);
+        self.update_player_state(Player::Two);
 
-        match p1_coords {
-            Ok((x, y, z)) => {
-                self.p1_x = Some(x);
-                self.p1_y = Some(y);
-                self.p1_z = Some(z);
-            },
-            Err(_) => {
-                self.p1_x = None;
-                self.p1_y = None;
-                self.p1_z = None;
-            }
-        };
 
-        match p2_coords {
-            Ok((x, y, z)) => {
-                self.p2_x = Some(x);
-                self.p2_y = Some(y);
-                self.p2_z = Some(z);
-            },
-            Err(_) => {
-                self.p2_x = None;
-                self.p2_y = None;
-                self.p2_z = None;
-            }
-        };
-
-        self.p1_input_attack = input::get_inputted_attack(pid, globals::MemoryAddresses::PlayerOneBaseAddress).ok();
-        self.p1_input_direction = input::get_inputted_direction(pid, globals::MemoryAddresses::PlayerOneBaseAddress).ok();
-        self.p1_damage_received = player::get_damage_received(pid, globals::MemoryAddresses::PlayerOneBaseAddress).ok();
-        self.p1_facing = position::facing(pid, globals::Player::One).ok();
-        self.p1_char_id = player::get_player_char_id(pid, globals::MemoryAddresses::PlayerOneBaseAddress).ok();
-        
-        self.p2_input_attack = input::get_inputted_attack(pid, globals::MemoryAddresses::PlayerTwoBaseAddress).ok();
-        self.p2_input_direction = input::get_inputted_direction(pid, globals::MemoryAddresses::PlayerTwoBaseAddress).ok();
-        self.p2_damage_received = player::get_damage_received(pid, globals::MemoryAddresses::PlayerTwoBaseAddress).ok();
-        self.p2_facing = position::facing(pid, globals::Player::Two).ok();
-        self.p2_char_id = player::get_player_char_id(pid, globals::MemoryAddresses::PlayerTwoBaseAddress).ok();
-        
         println!("Frame: {}\tP1: {}, {} \t P2: {}, {}", self.round_frame_count.unwrap(), globals::InputButton::from(self.p1_input_attack.unwrap() as usize).to_str(), globals::InputDirection::from(self.p1_input_direction.unwrap() as usize).to_str(), globals::InputButton::from(self.p2_input_attack.unwrap() as usize).to_str(), globals::InputDirection::from(self.p2_input_direction.unwrap() as usize).to_str());
     }
 
-    pub fn replay(&self, previous_frame_state: Option<&GameState>, frame_state: &GameState) {
+    pub fn replay(&self, previous_frame_state: Option<&GameState<M>>, frame_state: &GameState<M>) {
         if self.round_frame_count == self.round_frame_count_previous {
             return;
         }

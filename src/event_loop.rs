@@ -2,48 +2,47 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::thread;
 
-use read_process_memory::{Pid, ProcessHandle, TryIntoProcessHandle};
+use read_process_memory::ProcessHandle;
 
 use crate::game_state::GameState;
 use crate::globals;
+use crate::memory::MemoryModel;
 use crate::replay::player_match::MatchReplay;
 
+/// Time to sleep in between loop checks
+pub const TIME_TO_SLEEP_MS: f64 = 1.0f64 / 120.0f64;
+
 /// 
-pub struct LoopState {
-    pid: ProcessHandle,
-    round_frames: Vec<GameState>,
-    state: GameState,
+pub struct LoopState<M: MemoryModel> {
+    round_states: Vec<GameState<M>>,
+    state: GameState<M>,
     replay_mode: bool
 }
 
-impl LoopState {
-    pub fn new(process: ProcessHandle, replay: Option<MatchReplay>) -> Self {
+impl<M: MemoryModel> LoopState<M> {
+    pub fn new(handle: ProcessHandle, replay: Option<MatchReplay<M>>) -> Self {
         Self {
-            // Process ID for the Tekken 7 game executable
-            pid: process,
             /// Pre-allocate 3600 frames of data (1 minute)
             /// which is the max amount of frames that can exist 
-            /// in a Tekken 7 match using official tournament rules
-            /// (excludes round-victory inputs)
-            round_frames: match replay {
-                Some(frames) => frames.round_frames(),
+            /// in a Tekken 7 match using official TWT rules (excluding round-victory inputs)
+            round_states: match &replay {
+                Some(player_match) => player_match.round_states(),
                 None => Vec::with_capacity(3600)
             },
-            /// Current state of the game (e.g. data of the most recent frame received)
-            state: GameState::new(),
+            /// Current state of the game (data of the most recent frame)
+            state: GameState::new(M::new(handle)),
             replay_mode: replay.is_some()
         }
     }
 
     /// Sleeps until the frame count has been updated
     fn wait_to_proceed(&self) {
-        match self.state.round_frame_count_previous(), self.state.round_frame_count() {
-            Some(previous_frame, current_frame) if previous_frame == current_frame => 
-                let time_to_sleep_ms = 1.0f64 / 120.0f64;
+        match (self.state.round_frame_count_previous(), self.state.round_frame_count()) {
+            (Some(previous_frame), Some(current_frame)) if (previous_frame == current_frame) => {
                 // Sleep every 1/120th of a second if we're still in the same frame so that we can save our processing power
-                thread::sleep(std::time::Duration::from_secs_f64(time_to_sleep_ms));
+                thread::sleep(std::time::Duration::from_secs_f64(TIME_TO_SLEEP_MS));
             },
-            None => ()
+            _ => ()
         };
     }
 
@@ -58,10 +57,10 @@ impl LoopState {
         // Wait until we're in a game to start updating the frames
         while let None = self.state.round_frame_count() {
             self.wait_to_proceed();
-            self.state.update(&self.pid);
+            self.state.update();
         }
 
-        for i in 0..self.round_frames.len() {
+        for i in 0..self.round_states.len() {
             // Determine if we should sleep. On the first frame
             // this is guaranteed to be skipped because the previous frame 
             // hasn't been set yet, which means we begin the replay the
@@ -70,11 +69,13 @@ impl LoopState {
 
             match self.state.round_frame_count() {
                 Some(round_frame) => {
-                    self.state.replay(&self.round_frames.get(i), &self.round_frames[i]);
-                    self.state.update(&self.pid);
+                    self.state.replay(self.round_states.get(i), &self.round_states[i]);
+                    self.state.update();
                     continue;
                 },
-                None => break;
+                None => {
+                    break;
+                }
             };
         }
     }
@@ -83,7 +84,7 @@ impl LoopState {
         loop {
             // Determine if we should sleep
             self.wait_to_proceed();
-            self.state.update(&self.pid);
+            self.state.update();
 
             let current_round = self.state.round();
             let round_frame_count = self.state.round_frame_count();
@@ -95,11 +96,11 @@ impl LoopState {
             }
 
             // Only update the batch once we have a new frame to advance
-            self.round_frames.push(self.state.clone());
+            self.round_states.push(self.state.clone());
         
             // Save match data when the round count changes
             if round_frame_count < round_frame_count_previous {
-                let round_result = serde_json::to_string(&self.round_frames).unwrap();
+                let round_result = serde_json::to_string(&self.round_states).unwrap();
                 let file_name = format!(
                     "C:/Users/gsala/Documents/Tekken7Replays/{}_{}_{}_{}.json", 
                     self.state.character_id(globals::Player::One).map(|o| o.to_string()).unwrap_or("none".to_owned()), 
@@ -115,7 +116,7 @@ impl LoopState {
                 file.write(&round_result.as_bytes()).expect("Failed to write buffer to file");
                 file.flush().expect("Failed to flush file");
 
-                self.round_frames.clear();
+                self.round_states.clear();
             }
         }
     }
