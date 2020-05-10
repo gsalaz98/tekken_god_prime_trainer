@@ -1,5 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
-pub enum Version {
-}
+pub enum Version {}

@@ -16,6 +16,5 @@ pub fn get_pid() -> Result<Pid, &'static str> {
         }
     }
 
-    tekken_pid
-        .ok_or("Tekken is not running. Please launch Tekken then run this again")
+    tekken_pid.ok_or("Tekken is not running. Please launch Tekken then run the application again")
 }

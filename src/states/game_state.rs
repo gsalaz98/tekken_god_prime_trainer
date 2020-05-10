@@ -1,54 +1,61 @@
 use read_process_memory::*;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use crate::globals::{self, Player};
-use crate::memory::{MemoryModel, InputMemory, RoundMemory};
-use super::PlayerState;
+use crate::globals::{self, Character, Player};
+use crate::memory::{InputMemory, MemoryModel, RoundMemory};
+use crate::states::{
+    builders::GameStateBuilder,
+    player_state::{DefaultPlayerInfo, DefaultPlayerState},
+};
 
-
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Default, Deserialize, Serialize)]
 pub struct GameState<M: MemoryModel> {
-    round_frame_count: M::FrameCount,
-    round_frame_count_previous: M::FrameCount,
-
     round: M::RoundCount,
+    round_frame_count: M::FrameCount,
 
-    player_state: (PlayerState, PlayerState),
+    // TODO: Make this a generic trait definition that can be Serialized + Deserialized
+    player_info: (DefaultPlayerInfo, DefaultPlayerInfo),
+    player_state: (DefaultPlayerState, DefaultPlayerState),
 
     #[serde(skip)]
-    memory: M
+    memory: Option<M>,
 }
 
 impl<M: MemoryModel> GameState<M> {
-    pub fn new(memory: M) -> Self {
-        Self {
-            round_frame_count: None,
-            round_frame_count_previous: None,
+    pub fn new(builder: GameStateBuilder<M>) -> Self {
+        builder.build()
+    }
 
-            round: None,
-
-            player_state: (PlayerState, PlayerState)
-
-            memory
+    pub fn player(&self, player: Player) -> DefaultPlayerState {
+        match player {
+            Player::One => self.player_state.0,
+            Player::Two => self.player_state.1,
         }
     }
 
-    pub fn round(&self) -> Option<M::RoundCount> {
+    pub fn player_info(&self, player: Player) -> DefaultPlayerInfo {
+        match player {
+            Player::One => self.player_info.0,
+            Player::Two => self.player_info.1,
+        }
+    }
+
+    pub fn round(&self) -> M::RoundCount {
         self.round
     }
-    
-    pub fn round_frame_count(&self) -> Option<M::FrameCount> {
+
+    pub fn round_frame_count(&self) -> M::FrameCount {
         self.round_frame_count
     }
 
-    pub fn round_frame_count_previous(&self) -> Option<M::FrameCount> {
+    pub fn round_frame_count_previous(&self) -> M::FrameCount {
         self.round_frame_count_previous
     }
 
-    pub fn character_id(&self, player: globals::Player) -> Option<M::Character> {
+    pub fn character(&self, player: globals::Player) -> Character {
         match player {
-            globals::Player::One => self.p1_char_id,
-            globals::Player::Two => self.p2_char_id
+            globals::Player::One => self.player(Player::One).character,
+            globals::Player::Two => self.player(Player::Two).character,
         }
     }
 
@@ -77,10 +84,10 @@ impl<M: MemoryModel> GameState<M> {
         match player {
             Player::One => {
                 let coordinates = self.memory.coordinates(Player::One);
-                
-                self.p1_x = coordinates.x().ok(); 
-                self.p1_y = coordinates.y().ok(); 
-                self.p1_z = coordinates.z().ok(); 
+
+                self.p1_x = coordinates.x().ok();
+                self.p1_y = coordinates.y().ok();
+                self.p1_z = coordinates.z().ok();
 
                 self.p1_input_attack = self.memory.input_attack(player).ok();
                 self.p1_input_direction = self.memory.input_direction(player).ok();
@@ -88,7 +95,7 @@ impl<M: MemoryModel> GameState<M> {
                 self.p1_damage_received = self.memory.player_damage_received(player).ok();
                 self.p1_facing = self.memory.player_facing(player).ok();
                 self.p1_char_id = self.memory.player_character_id(player).ok();
-            },
+            }
             Player::Two => {
                 let (x, y, z) = self.memory.player_coordinates(player);
 
@@ -113,7 +120,7 @@ impl<M: MemoryModel> GameState<M> {
         // since `update` will ALWAYS result in a mutation
         match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
             Ok(time) => self.last_update = Some(time.as_millis() as f64 * 0.001),
-            Err(_) => println!("Failed to get system time. Defaulting to previous value")
+            Err(_) => println!("Failed to get system time. Defaulting to previous value"),
         };
 
         // Update the previous frame count here so that we don't
@@ -133,8 +140,14 @@ impl<M: MemoryModel> GameState<M> {
         self.update_player_state(Player::One);
         self.update_player_state(Player::Two);
 
-
-        println!("Frame: {}\tP1: {}, {} \t P2: {}, {}", self.round_frame_count.unwrap(), globals::InputButton::from(self.p1_input_attack.unwrap() as usize).to_str(), globals::InputDirection::from(self.p1_input_direction.unwrap() as usize).to_str(), globals::InputButton::from(self.p2_input_attack.unwrap() as usize).to_str(), globals::InputDirection::from(self.p2_input_direction.unwrap() as usize).to_str());
+        println!(
+            "Frame: {}\tP1: {}, {} \t P2: {}, {}",
+            self.round_frame_count.unwrap(),
+            globals::InputButton::from(self.p1_input_attack.unwrap() as usize).to_str(),
+            globals::InputDirection::from(self.p1_input_direction.unwrap() as usize).to_str(),
+            globals::InputButton::from(self.p2_input_attack.unwrap() as usize).to_str(),
+            globals::InputDirection::from(self.p2_input_direction.unwrap() as usize).to_str()
+        );
     }
 
     pub fn replay(&self, previous_frame_state: Option<&GameState<M>>, frame_state: &GameState<M>) {
@@ -149,7 +162,7 @@ impl<M: MemoryModel> GameState<M> {
         let p1_facing = match frame_state.p1_facing {
             Some(0) => globals::Player::One,
             Some(1) => globals::Player::Two,
-            _ => panic!("Player one is facing the void")
+            _ => panic!("Player one is facing the void"),
         };
 
         let p2_input_attack = frame_state.p2_input_attack.expect("p2 input attack");
@@ -159,51 +172,48 @@ impl<M: MemoryModel> GameState<M> {
         let p2_facing = match frame_state.p1_facing {
             Some(0) => globals::Player::One,
             Some(1) => globals::Player::Two,
-            _ => panic!("Player two is facing the void")
+            _ => panic!("Player two is facing the void"),
         };
 
         // TODO: Figure out how to determine what side the player spawns on in online matches
         p1_button.input_attack(
-            globals::Player::One, 
-            previous_frame_state.map(|prev| {
-                globals::InputButton::from(prev.p1_input_attack.unwrap() as usize)
-            })
-            .clone()
+            globals::Player::One,
+            previous_frame_state
+                .map(|prev| globals::InputButton::from(prev.p1_input_attack.unwrap() as usize))
+                .clone(),
         );
 
         p1_direction.input_direction(
-            globals::Player::One, 
-            p1_facing.clone(), 
+            globals::Player::One,
+            p1_facing.clone(),
             previous_frame_state.map(|prev| match prev.p1_facing {
                 Some(0) => globals::Player::One,
                 Some(1) => globals::Player::Two,
-                _ => panic!("Player one is facing the void")
-            }), 
+                _ => panic!("Player one is facing the void"),
+            }),
             previous_frame_state.map(|prev| {
                 globals::InputDirection::from(prev.p1_input_direction.unwrap() as usize)
-            })
+            }),
         );
 
         // TODO: Figure out how to determine what side the player spawns on in online matches
         p2_button.input_attack(
-            globals::Player::Two, 
-            previous_frame_state.map(|prev| {
-                globals::InputButton::from(prev.p2_input_attack.unwrap() as usize)
-            })
+            globals::Player::Two,
+            previous_frame_state
+                .map(|prev| globals::InputButton::from(prev.p2_input_attack.unwrap() as usize)),
         );
 
         p2_direction.input_direction(
-            globals::Player::Two, 
-            p2_facing.clone(), 
+            globals::Player::Two,
+            p2_facing.clone(),
             previous_frame_state.map(|prev| match prev.p2_facing {
                 Some(0) => globals::Player::One,
                 Some(1) => globals::Player::Two,
-                _ => panic!("Player two is facing the void")
-            }), 
+                _ => panic!("Player two is facing the void"),
+            }),
             previous_frame_state.map(|prev| {
                 globals::InputDirection::from(prev.p2_input_direction.unwrap() as usize)
-            })
+            }),
         );
     }
 }
-

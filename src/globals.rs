@@ -1,12 +1,14 @@
 use enigo::{Enigo, KeyboardControllable};
-use serde::{Serialize, Deserialize};
+use num_derive::FromPrimitive;
+use num_traits::FromPrimitive;
+use serde::{Deserialize, Serialize};
 
 pub enum MemoryAddress {
     GameAddress = 0x140000000,
 
     PlayerOneBaseAddress = 0x00342B780,
     PlayerTwoBaseAddress = 0x00342E750,
-    
+
     PlayerCharacterID = 0xD8,
     PlayerCoordinateOffsetX = 0x160,
     PlayerCoordinateOffsetY = 0x164,
@@ -24,10 +26,10 @@ pub enum MemoryAddress {
     ThrowTimer = 0x00342EE30,
 
     PlayerOneFacing = 0x00341D6A0,
-    PlayerTwoFacing = 0x00341D6A4
+    PlayerTwoFacing = 0x00341D6A4,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Player {
     One,
     Two,
@@ -36,7 +38,7 @@ pub enum Player {
 #[derive(Clone, Serialize, Deserialize)]
 pub enum Facing {
     Left,
-    Right
+    Right,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -51,29 +53,54 @@ pub enum Feet {
     Towards,
 }
 
+pub type GroundState = (Face, Feet);
+
 #[derive(Clone, Serialize, Deserialize)]
-pub enum Stand {
-    Up,
+pub enum Oki {
+    Standing,
     Crouching,
 
-    BackRoll,
+    QuickBackRoll,
 
-    ForwardRoll,
-    ForwardRollStand,
-    ForwardRollCrouch,
-    ForwardRollLungeAttack,
-    ForwardRollLowAttack,
-    ForwardRollMidAttack,
-
-    RollLeft,
-    RollRight,
+    RollLeftStanding,
+    RollRightCrouching,
 
     LowAttack,
     MidAttack,
 
-    Special,
-
     Ukemi,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub enum GetUp {
+    Standing,
+    Crouching,
+
+    QuickBackRoll,
+
+    RollLeftStanding,
+    RollRightStanding,
+    ExtendedRollLeftStanding,
+    ExtendedRollRightStanding,
+
+    RollLeftCrouching,
+    RollRightCrouching,
+    ExtendedRollLeftCrouching,
+    ExtendedRollRightCrouching,
+
+    LowAttack,
+    MidAttack,
+
+    ForwardRollStanding,
+    ForwardRollCrouching,
+    ForwardRollLungeAttack,
+    ForwardRollLowAttack,
+    ForwardRollMidAttack,
+
+    RecoveryKick,
+    SpringKick,
+
+    Special,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -129,7 +156,7 @@ pub enum InputButton {
     RagePlusOnePlusTwoPlusThreePlusFour = 15872,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, FromPrimitive, Serialize, Deserialize)]
 pub enum Character {
     Paul = 0,
     Law,
@@ -188,7 +215,7 @@ pub enum Character {
     Fahkumram,
 
     Unloaded = 71,
-    NotSelected = 255
+    NotSelected = 255,
 }
 
 impl std::fmt::Display for Character {
@@ -251,7 +278,7 @@ impl std::fmt::Display for Character {
             Character::Fahkumram => write!(f, "Fahkumram"),
 
             Character::Unloaded => write!(f, "Unloaded"),
-            Character::NotSelected => write!(f, "Not selected")
+            Character::NotSelected => write!(f, "Not selected"),
         }
     }
 }
@@ -367,7 +394,7 @@ impl InputButton {
                 InputButton::RagePlusOnePlusThreePlusFour => "-756",
                 InputButton::RagePlusTwoPlusThreePlusFour => "-856",
                 InputButton::RagePlusOnePlusTwoPlusThreePlusFour => "-7856",
-            }
+            },
         }
     }
 
@@ -389,8 +416,7 @@ impl InputButton {
 
                 return;
             }
-        }
-        else {
+        } else {
             for key in self.to_input_key(&player).chars() {
                 enigo.key_down(enigo::Key::Layout(key));
             }
@@ -438,8 +464,8 @@ impl InputDirection {
                     InputDirection::UpForward => "wa",
                     InputDirection::Up => "w",
                     InputDirection::UpBack => "wd",
-                }
-            }
+                },
+            },
             Player::Two => match side {
                 Player::One => match self {
                     InputDirection::Neutral => "",
@@ -462,17 +488,25 @@ impl InputDirection {
                     InputDirection::UpForward => "13",
                     InputDirection::Up => "1",
                     InputDirection::UpBack => "14",
-                }
-            }
+                },
+            },
         }
     }
 
-    pub fn input_direction(&self, player: Player, side: Player, previous_side: Option<Player>, previous_direction: Option<InputDirection>) {
+    pub fn input_direction(
+        &self,
+        player: Player,
+        side: Player,
+        previous_side: Option<Player>,
+        previous_direction: Option<InputDirection>,
+    ) {
         let input_keys = self.to_input_key(&player, side);
         let mut enigo = Enigo::new();
 
         if previous_direction.is_some() && previous_side.is_some() {
-            let prev = previous_direction.unwrap().to_input_key(&player, previous_side.unwrap());
+            let prev = previous_direction
+                .unwrap()
+                .to_input_key(&player, previous_side.unwrap());
 
             if prev != input_keys {
                 for key in prev.chars() {
@@ -483,8 +517,7 @@ impl InputDirection {
                     enigo.key_down(enigo::Key::Layout(key));
                 }
             }
-        }
-        else {
+        } else {
             for key in input_keys.chars() {
                 enigo.key_down(enigo::Key::Layout(key));
             }
@@ -507,7 +540,10 @@ impl From<usize> for InputDirection {
             256 => InputDirection::Up,
             128 => InputDirection::UpBack,
 
-            _ => panic!(format!("Received unknown value for input direction with value {}", value))
+            _ => panic!(format!(
+                "Received unknown value for input direction with value {}",
+                value
+            )),
         }
     }
 }
@@ -550,7 +586,7 @@ impl From<usize> for InputButton {
             15360 => InputButton::RagePlusTwoPlusThreePlusFour,
             15872 => InputButton::RagePlusOnePlusTwoPlusThreePlusFour,
 
-            _ => panic!(format!("Unknown input button encountered: {}", value))
+            _ => panic!(format!("Unknown input button encountered: {}", value)),
         }
     }
 }
@@ -559,7 +595,7 @@ impl Player {
     pub fn base_address(&self) -> usize {
         match self {
             Player::One => MemoryAddress::PlayerOneBaseAddress as usize,
-            Player::Two => MemoryAddress::PlayerTwoBaseAddress as usize
+            Player::Two => MemoryAddress::PlayerTwoBaseAddress as usize,
         }
     }
 }
@@ -570,7 +606,7 @@ impl std::ops::Not for Player {
     fn not(self) -> Self::Output {
         match self {
             Player::One => Player::Two,
-            Player::Two => Player::One
+            Player::Two => Player::One,
         }
     }
 }
