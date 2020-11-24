@@ -6,44 +6,52 @@ use read_process_memory::ProcessHandle;
 
 use crate::globals;
 use crate::memory::MemoryModel;
-use crate::replay::player_match::MatchReplay;
 use crate::states::game_state::GameState;
-use crate::states::player_state::{PlayerInfo, PlayerState};
+use super::game_state::RoundState;
+use globals::Player;
 
 /// Time to sleep in between loop checks
 pub const TIME_TO_SLEEP_MS: f64 = 1.0f64 / 120.0f64;
 
-pub struct LoopState<M: MemoryModel> {
-    round_states: Vec<GameState<M>>,
+pub struct LoopState<M> {
+    round_states: Vec<RoundState>,
     index: usize,
-    //replay_mode: bool,
+
+    memory: std::marker::PhantomData<M>,
 }
 
 impl<M: MemoryModel> LoopState<M> {
-    pub fn new(handle: ProcessHandle) -> Self {
+    pub fn new() -> Self {
         //let game_data = builder.build();
 
         Self {
-            /// Pre-allocate 3600 frames of data (1 minute)
-            /// which is the max amount of frames that can exist
-            /// in a Tekken 7 match using official TWT rules (excluding round-victory inputs)
-            round_states: Vec::with_capacity(3600),
+            /// Pre-allocate 6000 frames of data,
+            /// taking into account rage art animations in a Tekken 7 
+            /// match using official TWT rules (excluding round-victory inputs)
+            round_states: Vec::with_capacity(6000),
             index: 0,
+
+            memory: std::marker::PhantomData
             //replay_mode: replay.is_some(),
         }
     }
 
-    fn state(&self) -> &GameState<M> {
+    fn previous_state(&self) -> Option<&RoundState> {
+        self.round_states.get(self.index - 1)
+    }
+
+    fn state(&self) -> &RoundState {
         &self.round_states[self.index]
     }
 
     /// Sleeps until the frame count has been updated
     fn wait_to_proceed(&self) {
         match (
-            self.state().round_frame_count_previous(),
-            self.state().round_frame_count(),
+            self.previous_state().map(|s| s.get_round_frame()),
+            self.state().get_round_frame(),
         ) {
-            (previous_frame, current_frame) if (previous_frame == current_frame) => {
+            (Some(previous_frame), current_frame) 
+            if (previous_frame == current_frame) => {
                 // Sleep every 1/120th of a second if we're still in the same frame so that we can save our processing power
                 thread::sleep(std::time::Duration::from_secs_f64(TIME_TO_SLEEP_MS));
             }
@@ -51,68 +59,52 @@ impl<M: MemoryModel> LoopState<M> {
         };
     }
 
-    pub fn start(&mut self) {
-        //match self.replay_mode {
-        //    true => self.start_replay(),
-        //    false => self.start_capture(),
-        //};
-        self.start_capture();
+    pub fn start(&mut self, handle: ProcessHandle) {
+        self.start_capture(handle);
     }
 
-    //fn start_replay(&mut self) {
-    //    // Wait until we're in a game to start updating the frames
-    //    while let None = self.state().round_frame_count() {
-    //        self.wait_to_proceed();
-    //        self.state().update();
-    //    }
+    fn start_capture(&mut self, handle: ProcessHandle) {
+        let mut game_state = GameState::<M>::new(handle);
 
-    //    for i in 0..self.round_states.len() {
-    //        // Determine if we should sleep. On the first frame
-    //        // this is guaranteed to be skipped because the previous frame
-    //        // hasn't been set yet, which means we begin the replay the
-    //        // moment we know we're in a game
-    //        self.wait_to_proceed();
-
-    //        match self.state().round_frame_count() {
-    //            Some(round_frame) => {
-    //                self.state
-    //                    .replay(self.round_states.get(i), &self.round_states[i]);
-    //                self.state().update();
-    //                continue;
-    //            }
-    //            None => {
-    //                break;
-    //            }
-    //        };
-    //    }
-    //}
-
-    fn start_capture(&mut self) {
         loop {
             // Determine if we should sleep
             self.wait_to_proceed();
-            self.state().update();
+            game_state.update().unwrap();
 
-            let current_round = self.state().round();
-            let round_frame_count = self.state().round_frame_count();
-            let round_frame_count_previous = self.state().round_frame_count_previous();
+            let current_round = self.state().get_round();
+            let current_frame = self.state().get_round_frame();
+            let previous_frame = self.previous_state()
+                .map(|s| s.get_round_frame());
+
+            let round_state = game_state.round_state();
 
             // If we're in the same frame, we'll want to wait until the next
-            if round_frame_count == round_frame_count_previous {
+            if previous_frame.is_none() {
+                match round_state {
+                    Some(state) => self.round_states.push(state),
+                    None => ()
+                };
+
+                continue;
+            }
+
+            let previous_frame = previous_frame.unwrap();
+            if previous_frame == current_frame {
                 continue;
             }
 
             // Only update the batch once we have a new frame to advance
-            self.round_states.push(*self.state().clone());
+            let state = round_state.expect(&format!("Expected game state at frame {}, found None", current_frame));
+            self.round_states.push(state);
 
             // Save match data when the round count changes
-            if round_frame_count < round_frame_count_previous {
+            if current_frame < previous_frame {
                 let round_result = serde_json::to_string(&self.round_states).unwrap();
                 let file_name = format!(
                     "C:/Users/gsala/Documents/Tekken7Replays/{}_vs_{}_{}_{}.json",
-                    self.state().character(globals::Player::One).to_string(),
-                    self.state().character(globals::Player::Two).to_string(),
-                    current_round.into(),
+                    self.state().get_player_state(Player::One).character().to_string(),
+                    self.state().get_player_state(Player::Two).character().to_string(),
+                    current_round,
                     uuid::Uuid::new_v4()
                 );
 

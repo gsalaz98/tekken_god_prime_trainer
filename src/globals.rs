@@ -1,11 +1,11 @@
 use enigo::{Enigo, KeyboardControllable};
 use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
 use serde::{Deserialize, Serialize};
 
 pub enum MemoryAddress {
     GameAddress = 0x140000000,
 
+    /*
     PlayerOneBaseAddress = 0x00342B780,
     PlayerTwoBaseAddress = 0x00342E750,
 
@@ -27,12 +27,18 @@ pub enum MemoryAddress {
 
     PlayerOneFacing = 0x00341D6A0,
     PlayerTwoFacing = 0x00341D6A4,
+    */
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Player {
     One,
     Two,
+}
+
+pub enum Side {
+    Left,
+    Right
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -49,58 +55,45 @@ pub enum Face {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub enum Feet {
-    Away,
-    Towards,
+    Facing,
+    Away
 }
 
 pub type GroundState = (Face, Feet);
 
 #[derive(Clone, Serialize, Deserialize)]
-pub enum Oki {
+pub enum Wakeup {
     Standing,
     Crouching,
 
     QuickBackRoll,
 
     RollLeftStanding,
-    RollRightCrouching,
-
-    LowAttack,
-    MidAttack,
-
-    Ukemi,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub enum GetUp {
-    Standing,
-    Crouching,
-
-    QuickBackRoll,
-
-    RollLeftStanding,
-    RollRightStanding,
-    ExtendedRollLeftStanding,
-    ExtendedRollRightStanding,
-
     RollLeftCrouching,
+    RollRightStanding,
     RollRightCrouching,
+
+    ExtendedRollLeftStanding,
     ExtendedRollLeftCrouching,
+    ExtendedRollRightStanding,
     ExtendedRollRightCrouching,
 
     LowAttack,
     MidAttack,
 
-    ForwardRollStanding,
-    ForwardRollCrouching,
-    ForwardRollLungeAttack,
-    ForwardRollLowAttack,
-    ForwardRollMidAttack,
-
-    RecoveryKick,
     SpringKick,
+    WakeupKick,
 
-    Special,
+    RollForward,
+    RollForwardSpringAttack,
+    RollForwardLowAttack,
+    RollForwardMidAttack,
+    RollForwardCrouching,
+    RollForwardStanding,
+
+    Ukemi,
+
+    Special
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -156,7 +149,7 @@ pub enum InputButton {
     RagePlusOnePlusTwoPlusThreePlusFour = 15872,
 }
 
-#[derive(Clone, FromPrimitive, Serialize, Deserialize)]
+#[derive(Clone, Copy, FromPrimitive, Serialize, Deserialize)]
 pub enum Character {
     Paul = 0,
     Law,
@@ -592,12 +585,6 @@ impl From<usize> for InputButton {
 }
 
 impl Player {
-    pub fn base_address(&self) -> usize {
-        match self {
-            Player::One => MemoryAddress::PlayerOneBaseAddress as usize,
-            Player::Two => MemoryAddress::PlayerTwoBaseAddress as usize,
-        }
-    }
 }
 
 impl std::ops::Not for Player {

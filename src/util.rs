@@ -3,7 +3,7 @@ use sysinfo;
 use sysinfo::{ProcessExt, SystemExt};
 
 /// Gets the Tekken 7 process ID
-pub fn get_pid() -> Result<Pid, &'static str> {
+pub fn pid() -> Result<Pid, &'static str> {
     let mut system = sysinfo::System::new();
     let mut tekken_pid = None;
 
